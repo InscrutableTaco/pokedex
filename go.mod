@@ -1,3 +1,3 @@
-module MODULE_NAME
+module pokedex
 
 go 1.24.3
