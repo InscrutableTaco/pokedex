@@ -12,7 +12,8 @@ import (
 
 const BASE_PATH = "https://pokeapi.co/api/v2/"
 
-var commandMap map[string]cliCommand
+var mapOfCommands map[string]cliCommand
+var cnfg *config
 
 type cliCommand struct {
 	name        string
@@ -37,14 +38,44 @@ type response struct {
 	Results  []location `json:"results"`
 }
 
-func commandHelp() error {
+func getAndParse(url string) (response, error) {
+
+	var results response
+
+	res, err := http.Get(url)
+	if err != nil {
+		return results, err
+	}
+	defer res.Body.Close()
+
+	decoder := json.NewDecoder(res.Body)
+	if err = decoder.Decode(&results); err != nil {
+		return results, err
+	}
+	return results, nil
+}
+
+func updatePagination(cnfg *config, results response) {
+	if results.Next != nil {
+		cnfg.next = *results.Next
+	} else {
+		cnfg.next = ""
+	}
+	if results.Previous != nil {
+		cnfg.previous = *results.Previous
+	} else {
+		cnfg.previous = ""
+	}
+}
+
+func commandHelp(_ *config) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage: ")
 	fmt.Println("")
 
 	//create a slice of cliCommands
 	var cmdSlice []cliCommand
-	for _, cmd := range commandMap {
+	for _, cmd := range mapOfCommands {
 		cmdSlice = append(cmdSlice, cmd)
 	}
 
@@ -61,32 +92,60 @@ func commandHelp() error {
 	return nil
 }
 
-func commandExit() error {
+func commandExit(_ *config) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandMapfunc() error {
+func commandMap(cnfg *config) error {
 
-	res, err := http.Get(BASE_PATH + "location-area/")
+	var url string
+	if cnfg.next != "" {
+		url = cnfg.next
+	} else {
+		url = BASE_PATH + "location-area/"
+	}
+
+	results, err := getAndParse(url)
+
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
 
-	var results response
-	decoder := json.NewDecoder(res.Body)
-	if err = decoder.Decode(&results); err != nil {
-		fmt.Println(err)
-		return err
-	}
+	updatePagination(cnfg, results)
 
 	for _, loc := range results.Results {
 		fmt.Println(loc.Name)
 	}
 
 	return nil
+}
+
+func commandMapb(cnfg *config) error {
+
+	var url string
+	if cnfg.previous == "" {
+		fmt.Println("You're on the first page")
+		return nil
+	}
+
+	url = cnfg.previous
+
+	results, err := getAndParse(url)
+
+	if err != nil {
+		return err
+	}
+
+	updatePagination(cnfg, results)
+
+	for _, loc := range results.Results {
+		fmt.Println(loc.Name)
+	}
+
+	return nil
+
 }
 
 func cleanInput(text string) []string {
@@ -106,21 +165,39 @@ func cleanInput(text string) []string {
 
 func main() {
 
-	commandMap = map[string]cliCommand{
+	cnfg = &config{
+		next:     "",
+		previous: "",
+	}
+
+	mapOfCommands = map[string]cliCommand{
 		"exit": {
 			name:        "exit",
 			description: "Exit the Pokedex",
-			callback:    commandExit,
+			callback: func() error {
+				return commandExit(cnfg)
+			},
 		},
 		"help": {
 			name:        "help",
 			description: "Displays a help message",
-			callback:    commandHelp,
+			callback: func() error {
+				return commandHelp(cnfg)
+			},
 		},
 		"map": {
 			name:        "map",
-			description: "Displays the location areas",
-			callback:    commandMapfunc,
+			description: "Displays the next page of location areas",
+			callback: func() error {
+				return commandMap(cnfg)
+			},
+		},
+		"mapb": {
+			name:        "mapb",
+			description: "Displays the previous page of location areas",
+			callback: func() error {
+				return commandMapb(cnfg)
+			},
 		},
 	}
 
@@ -133,7 +210,7 @@ func main() {
 
 		inputSlice := cleanInput(input)
 
-		cmd, ok := commandMap[inputSlice[0]]
+		cmd, ok := mapOfCommands[inputSlice[0]]
 		if !ok {
 			fmt.Println("Unknown command")
 			continue
