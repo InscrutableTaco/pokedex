@@ -2,10 +2,9 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
+	"pokedex/internal/pokeapi"
 	"sort"
 	"strings"
 )
@@ -26,36 +25,7 @@ type config struct {
 	previous string
 }
 
-type location struct {
-	Name string `json:"name"`
-	Url  string `json:"url"`
-}
-
-type response struct {
-	Count    int        `json:"count"`
-	Next     *string    `json:"next"`
-	Previous *string    `json:"previous"`
-	Results  []location `json:"results"`
-}
-
-func getAndParse(url string) (response, error) {
-
-	var results response
-
-	res, err := http.Get(url)
-	if err != nil {
-		return results, err
-	}
-	defer res.Body.Close()
-
-	decoder := json.NewDecoder(res.Body)
-	if err = decoder.Decode(&results); err != nil {
-		return results, err
-	}
-	return results, nil
-}
-
-func updatePagination(cnfg *config, results response) {
+func updatePagination(cnfg *config, results pokeapi.Response) {
 	if results.Next != nil {
 		cnfg.next = *results.Next
 	} else {
@@ -107,7 +77,7 @@ func commandMap(cnfg *config) error {
 		url = BASE_PATH + "location-area/"
 	}
 
-	results, err := getAndParse(url)
+	results, err := pokeapi.GetAndParse(url)
 
 	if err != nil {
 		return err
@@ -132,7 +102,7 @@ func commandMapb(cnfg *config) error {
 
 	url = cnfg.previous
 
-	results, err := getAndParse(url)
+	results, err := pokeapi.GetAndParse(url)
 
 	if err != nil {
 		return err
